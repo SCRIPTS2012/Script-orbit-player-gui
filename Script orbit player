@@ -1,0 +1,293 @@
+-- Thay bằng PlaceId chính xác của The Strongest Battlegrounds
+local allowedPlaceId = 1234567890  
+if game.PlaceId ~= allowedPlaceId then
+    warn("Script chỉ chạy được trong The Strongest Battlegrounds!")
+    return
+end
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local player = Players.LocalPlayer
+
+local targetPlayer = nil
+local orbiting = false
+local espEnabled = false
+
+local orbitRadius = 5
+local orbitSpeed = 5
+
+-- GUI setup
+local screenGui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+screenGui.Name = "OrbitESP_GUI"
+
+local frame = Instance.new("Frame", screenGui)
+frame.Size = UDim2.new(0, 230, 0, 400)
+frame.Position = UDim2.new(0, 20, 0, 100)
+frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+
+-- Nút bật/tắt GUI ở trên cùng
+local toggleGUIBtn = Instance.new("TextButton", screenGui)
+toggleGUIBtn.Size = UDim2.new(0, 100, 0, 30)
+toggleGUIBtn.Position = UDim2.new(0, 20, 0, 70)
+toggleGUIBtn.Text = "Ẩn GUI"
+toggleGUIBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+toggleGUIBtn.TextColor3 = Color3.new(1,1,1)
+toggleGUIBtn.BorderSizePixel = 0
+
+toggleGUIBtn.MouseButton1Click:Connect(function()
+    if frame.Visible then
+        frame.Visible = false
+        toggleGUIBtn.Text = "Hiện GUI"
+    else
+        frame.Visible = true
+        toggleGUIBtn.Text = "Ẩn GUI"
+    end
+end)
+
+local function createLabel(text, posY)
+    local label = Instance.new("TextLabel", frame)
+    label.Size = UDim2.new(1, -20, 0, 18)
+    label.Position = UDim2.new(0, 10, 0, posY)
+    label.Text = text
+    label.TextColor3 = Color3.new(1,1,1)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.SourceSans
+    label.TextSize = 16
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    return label
+end
+
+-- Dropdown để chọn player
+local dropdown = Instance.new("TextButton", frame)
+dropdown.Size = UDim2.new(1, -20, 0, 30)
+dropdown.Position = UDim2.new(0, 10, 0, 10)
+dropdown.Text = "Chọn player"
+dropdown.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+dropdown.TextColor3 = Color3.new(1,1,1)
+dropdown.AutoButtonColor = false
+
+local dropdownList = Instance.new("ScrollingFrame", frame)
+dropdownList.Size = UDim2.new(1, -20, 0, 120)
+dropdownList.Position = UDim2.new(0, 10, 0, 40)
+dropdownList.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+dropdownList.BorderSizePixel = 0
+dropdownList.Visible = false
+dropdownList.CanvasSize = UDim2.new(0, 0, 0, 0)
+dropdownList.ScrollBarThickness = 6
+
+local targetESPParts = {}
+
+local function clearESP()
+    for part, highlight in pairs(targetESPParts) do
+        if highlight and highlight.Parent then
+            highlight:Destroy()
+        end
+    end
+    targetESPParts = {}
+end
+
+local function updateESP()
+    clearESP()
+    if not espEnabled or not targetPlayer or not targetPlayer.Character then return end
+
+    for _, part in pairs(targetPlayer.Character:GetChildren()) do
+        if part:IsA("BasePart") then
+            local hl = Instance.new("Highlight")
+            hl.Adornee = part
+            hl.FillColor = Color3.fromRGB(255, 0, 0)
+            hl.OutlineColor = Color3.fromRGB(255, 0, 0)
+            hl.Parent = targetPlayer.Character
+            targetESPParts[part] = hl
+        end
+    end
+end
+
+-- Tạo label cho khoảng cách và tốc độ
+createLabel("Tầm xa (m):", 170)
+local radiusSlider = Instance.new("TextBox", frame)
+radiusSlider.Size = UDim2.new(1, -20, 0, 30)
+radiusSlider.Position = UDim2.new(0, 10, 0, 190)
+radiusSlider.Text = tostring(orbitRadius)
+radiusSlider.TextColor3 = Color3.new(1,1,1)
+radiusSlider.BackgroundColor3 = Color3.fromRGB(70,70,70)
+radiusSlider.ClearTextOnFocus = false
+radiusSlider.Font = Enum.Font.SourceSans
+radiusSlider.TextSize = 20
+radiusSlider.TextXAlignment = Enum.TextXAlignment.Center
+
+createLabel("Tốc độ:", 230)
+local speedSlider = Instance.new("TextBox", frame)
+speedSlider.Size = UDim2.new(1, -20, 0, 30)
+speedSlider.Position = UDim2.new(0, 10, 0, 250)
+speedSlider.Text = tostring(orbitSpeed)
+speedSlider.TextColor3 = Color3.new(1,1,1)
+speedSlider.BackgroundColor3 = Color3.fromRGB(70,70,70)
+speedSlider.ClearTextOnFocus = false
+speedSlider.Font = Enum.Font.SourceSans
+speedSlider.TextSize = 20
+speedSlider.TextXAlignment = Enum.TextXAlignment.Center
+
+-- Nút bật tắt orbit
+local toggleOrbitBtn = Instance.new("TextButton", frame)
+toggleOrbitBtn.Size = UDim2.new(1, -20, 0, 30)
+toggleOrbitBtn.Position = UDim2.new(0, 10, 0, 290)
+toggleOrbitBtn.Text = "Bật Orbit"
+toggleOrbitBtn.BackgroundColor3 = Color3.fromRGB(70, 120, 70)
+toggleOrbitBtn.TextColor3 = Color3.new(1,1,1)
+
+-- Nút bật tắt ESP
+local toggleESPBtn = Instance.new("TextButton", frame)
+toggleESPBtn.Size = UDim2.new(1, -20, 0, 30)
+toggleESPBtn.Position = UDim2.new(0, 10, 0, 330)
+toggleESPBtn.Text = "Bật ESP"
+toggleESPBtn.BackgroundColor3 = Color3.fromRGB(70, 120, 70)
+toggleESPBtn.TextColor3 = Color3.new(1,1,1)
+toggleESPBtn.Parent = frame
+
+-- Nút tìm người gần nhất
+local findNearestBtn = Instance.new("TextButton", frame)
+findNearestBtn.Size = UDim2.new(1, -20, 0, 30)
+findNearestBtn.Position = UDim2.new(0, 10, 0, 370)
+findNearestBtn.Text = "Tìm người gần nhất"
+findNearestBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 200)
+findNearestBtn.TextColor3 = Color3.new(1,1,1)
+findNearestBtn.Parent = frame
+
+-- Update dropdown danh sách người chơi
+local function updateDropdown()
+    dropdownList:ClearAllChildren()
+    local yPos = 0
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= player then
+            local btn = Instance.new("TextButton", dropdownList)
+            btn.Size = UDim2.new(1, 0, 0, 20)
+            btn.Position = UDim2.new(0, 0, 0, yPos)
+            btn.Text = plr.Name
+            btn.BackgroundColor3 = Color3.fromRGB(60,60,60)
+            btn.TextColor3 = Color3.new(1,1,1)
+            btn.MouseButton1Click:Connect(function()
+                targetPlayer = plr
+                dropdown.Text = plr.Name
+                dropdownList.Visible = false
+                clearESP()
+                updateESP()
+            end)
+            yPos = yPos + 20
+        end
+    end
+    dropdownList.CanvasSize = UDim2.new(0,0,0,yPos)
+end
+
+updateDropdown()
+
+Players.PlayerAdded:Connect(updateDropdown)
+Players.PlayerRemoving:Connect(function()
+    updateDropdown()
+    if targetPlayer and not Players:FindFirstChild(targetPlayer.Name) then
+        targetPlayer = nil
+        dropdown.Text = "Chọn player"
+        orbiting = false
+        toggleOrbitBtn.Text = "Bật Orbit"
+        toggleOrbitBtn.BackgroundColor3 = Color3.fromRGB(70, 120, 70)
+        espEnabled = false
+        toggleESPBtn.Text = "Bật ESP"
+        toggleESPBtn.BackgroundColor3 = Color3.fromRGB(70, 120, 70)
+        clearESP()
+    end
+end)
+
+dropdown.MouseButton1Click:Connect(function()
+    dropdownList.Visible = not dropdownList.Visible
+end)
+
+-- Tìm người gần nhất
+findNearestBtn.MouseButton1Click:Connect(function()
+    local closestPlayer = nil
+    local closestDist = math.huge
+    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        local myPos = player.Character.HumanoidRootPart.Position
+        for _, plr in pairs(Players:GetPlayers()) do
+            if plr ~= player and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+                local dist = (plr.Character.HumanoidRootPart.Position - myPos).Magnitude
+                if dist < closestDist then
+                    closestDist = dist
+                    closestPlayer = plr
+                end
+            end
+        end
+    end
+    if closestPlayer then
+        targetPlayer = closestPlayer
+        dropdown.Text = closestPlayer.Name
+        dropdownList.Visible = false
+        clearESP()
+        updateESP()
+    else
+        warn("Không tìm thấy người chơi phù hợp để orbit.")
+    end
+end)
+
+-- Xử lý input chỉnh tầm xa và tốc độ
+radiusSlider.FocusLost:Connect(function(enter)
+    local val = tonumber(radiusSlider.Text)
+    if val and val >=1 and val <= 15 then
+        orbitRadius = val
+    else
+        radiusSlider.Text = tostring(orbitRadius)
+    end
+end)
+
+speedSlider.FocusLost:Connect(function(enter)
+    local val = tonumber(speedSlider.Text)
+    if val and val >= 1 and val <= 120 then
+        orbitSpeed = val
+    else
+        speedSlider.Text = tostring(orbitSpeed)
+    end
+end)
+
+-- Bật/tắt orbit
+toggleOrbitBtn.MouseButton1Click:Connect(function()
+    if targetPlayer == nil then
+        warn("Chưa chọn player để orbit")
+        return
+    end
+    orbiting = not orbiting
+    if orbiting then
+        toggleOrbitBtn.Text = "Tắt Orbit"
+        toggleOrbitBtn.BackgroundColor3 = Color3.fromRGB(120, 70, 70)
+    else
+        toggleOrbitBtn.Text = "Bật Orbit"
+        toggleOrbitBtn.BackgroundColor3 = Color3.fromRGB(70, 120, 70)
+    end
+end)
+
+-- Bật/tắt ESP
+toggleESPBtn.MouseButton1Click:Connect(function()
+    espEnabled = not espEnabled
+    if espEnabled then
+        toggleESPBtn.Text = "Tắt ESP"
+        toggleESPBtn.BackgroundColor3 = Color3.fromRGB(120, 70, 70)
+        updateESP()
+    else
+        toggleESPBtn.Text = "Bật ESP"
+        toggleESPBtn.BackgroundColor3 = Color3.fromRGB(70, 120, 70)
+        clearESP()
+    end
+end)
+
+-- Orbit logic
+RunService.Heartbeat:Connect(function(step)
+    if orbiting and targetPlayer and targetPlayer.Character and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local hrp = player.Character.HumanoidRootPart
+        local targetHRP = targetPlayer.Character.HumanoidRootPart
+        local time = tick()
+        local angle = time * orbitSpeed
+        local offsetX = math.cos(angle) * orbitRadius
+        local offsetZ = math.sin(angle) * orbitRadius
+        hrp.CFrame = CFrame.new(targetHRP.Position.X + offsetX, targetHRP.Position.Y - 3, targetHRP.Position.Z + offsetZ)
+    end
+end)
